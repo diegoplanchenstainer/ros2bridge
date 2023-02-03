@@ -17,6 +17,9 @@ from rclpy.node import Node
 from ros2bridge.protocols.ws_server import WSServerProtocol
 from ros2bridge.utils.data_parser import RosDataParser, RosDataType
 
+from action_msgs.msg import GoalInfo
+from unique_identifier_msgs.msg import UUID
+from rclpy.time import Time
 
 @dataclass
 class WSServiceClient:
@@ -35,6 +38,19 @@ class WSServiceClient:
 
     client: Dict[str, Any]
     data_parser = RosDataParser(data_type=RosDataType.SERVICE)
+
+    def cancel_goal(self, data, module):
+
+        t = Time(seconds = data['goal_info']['stamp']['sec'], nanoseconds = data['goal_info']['stamp']['nanosec'])
+        uuid = UUID(uuid=data['goal_info']['goal_id'])
+
+        goal_info = GoalInfo()
+        goal_info.goal_id = uuid
+        goal_info.stamp = t.to_msg()
+
+        setattr(module, 'goal_info', goal_info)
+
+        return module
 
     def handle_operation(self, data: Dict[str, Any]) -> None:
         """Create and call ROS service client on client request.
@@ -84,12 +100,19 @@ class WSServiceClient:
                 response['message'] = f'Waiting for service {srv_name}'
                 _client.send_message(json.dumps(response))
 
-            request = self.data_parser.pack_data_to_ros(
-                data=message,
-                module=self.data_parser.get_module_instance(
-                    module=srv_type
+            if srv_type == "action_msgs/CancelGoal":
+                request = self.cancel_goal(
+                    data = message,
+                    module=self.data_parser.get_module_instance(
+                        module=srv_type
+                    ))
+            else:
+                request = self.data_parser.pack_data_to_ros(
+                    data=message,
+                    module=self.data_parser.get_module_instance(
+                        module=srv_type
+                    )
                 )
-            )
 
             future = srv_cli['client'].call_async(request)
 

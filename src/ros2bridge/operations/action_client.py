@@ -17,8 +17,9 @@ from rclpy.action import ActionClient
 from rclpy.action.client import ActionClient as ActionCli
 from rclpy.node import Node
 from rclpy.task import Future
+from rclpy.time import Time
 
-
+from geometry_msgs.msg import PoseStamped
 from ros2bridge.protocols.ws_server import WSServerProtocol
 from ros2bridge.utils.data_parser import RosDataParser, RosDataType
 
@@ -40,6 +41,28 @@ class WSActionClient:
 
     client: Dict[str, Any]
     data_parser = RosDataParser(data_type=RosDataType.ACTION)
+    
+    def follow_waypoints(self, data, module):
+        goal_poses = []
+
+        for elem in data['poses']:
+            goal_pose = PoseStamped()
+            goal_pose.header.frame_id = elem['header']['frame_id']
+            t = Time(seconds = elem['header']['stamp']['sec'], nanoseconds = elem['header']['stamp']['nanosec'])
+            goal_pose.header.stamp = t.to_msg()
+            print(t)
+            goal_pose.pose.position.x = elem['pose']['position']['x']
+            goal_pose.pose.position.y = elem['pose']['position']['y']
+            goal_pose.pose.position.z = elem['pose']['position']['z']
+            goal_pose.pose.orientation.x = elem['pose']['orientation']['x']
+            goal_pose.pose.orientation.y = elem['pose']['orientation']['y']
+            goal_pose.pose.orientation.z = elem['pose']['orientation']['z']
+            goal_pose.pose.orientation.w = elem['pose']['orientation']['w']
+            goal_poses.append(goal_pose)
+
+        setattr(module, 'poses', goal_poses)
+
+        return module
 
     def handle_operation(self, data: Dict[str, Any]) -> None:
         """Create and call ROS Action client on client request.
@@ -76,12 +99,19 @@ class WSActionClient:
         elif action == 'call':
             message = data['message']
 
-            goal = self.data_parser.pack_data_to_ros(
-                data=message,
-                module=self.data_parser.get_module_instance(
-                    module=action_type
+            if action_type.find('FollowWaypoints') != -1:
+                goal = self.follow_waypoints(
+                    data = message,
+                    module=self.data_parser.get_module_instance(
+                        module=action_type
+                    ))
+            else:
+                goal = self.data_parser.pack_data_to_ros(
+                    data=message,
+                    module=self.data_parser.get_module_instance(
+                        module=action_type
+                    )
                 )
-            )
 
             _action_client: ActionCli = self.client[
                 'action_client'
